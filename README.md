@@ -178,7 +178,7 @@ This project is developed by a team of 5 contributors, each working on specific 
 
 | Branch | Owner | Focus Area | Status |
 |--------|-------|------------|--------|
-| `feature/Lapure-frontend_wallet_connection` | **Lapure** | Wallet integration & UX | ✅ Complete |
+| `feature/Lapure-frontend_wallet_connection` | **Lapure** | Wallet integration & UX | 🚧 In Progress |
 | `feature/PepitoJL-blockchain_transaction_integration` | **PepitoJL** | Transaction building | 🚧 In Progress |
 | `feature/PepitoJP-metadata_and_blockfrost` | **PepitoJP** | Metadata & Blockfrost API | 🚧 In Progress |
 | `feature/Labuca-database_sync_worker` | **Labuca** | Background sync worker | 🚧 In Progress |
