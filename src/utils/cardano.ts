@@ -1,14 +1,35 @@
 // Cardano utilities for Blocknotes
-// NOTE: This is a mock implementation for the browser environment.
-// For production, install Blaze SDK locally with proper bundling:
-// npm install @blaze-cardano/sdk@0.3.0 @blaze-cardano/query@0.3.0 @blaze-cardano/wallet@0.3.0
+// Branch: feature/Lapure-frontend_wallet_connection
+// Implements real CIP-30 wallet connection with proper address conversion
 
-// Blockfrost configuration
-const BLOCKFROST_PROJECT_ID = "YOUR_BLOCKFROST_PROJECT_ID_HERE"; // Replace with your actual project ID
-const BLOCKFROST_API_URL = "https://cardano-preview.blockfrost.io/api/v0";
+import { bech32 } from 'bech32';
+
+// Environment configuration (from .env file)
+const BLOCKFROST_PROJECT_ID = import.meta.env.VITE_BLOCKFROST_PROJECT_ID || "previewV63zyo5P3KVq5Godjvhb1FB7pwSwfVOE";
+const BLOCKFROST_API_URL = import.meta.env.VITE_BLOCKFROST_API_URL || "https://cardano-preview.blockfrost.io/api/v0";
+const RECEIVER_ADDRESS = import.meta.env.VITE_RECEIVER_ADDRESS || "addr_test1qrazn8m6hg22tj46uxv8428pn08emqsp5x6r4hfrmwwj79dqx72yxnsx5u4a428mqkn54gr0aevsa4dpusslr22vppfqrjp6p4";
+const CARDANO_NETWORK = import.meta.env.VITE_CARDANO_NETWORK || "preview";
 
 // Your metadata label - unique identifier for your app
-const METADATA_LABEL = 42819n;
+const METADATA_LABEL = BigInt(import.meta.env.VITE_METADATA_LABEL || 42819);
+
+// Network IDs for Cardano
+const NETWORK_IDS = {
+  mainnet: 1,
+  preview: 0,
+  preprod: 0,
+  testnet: 0,
+} as const;
+
+// Export receiver address for use in transactions
+export const getReceiverAddress = (): string => RECEIVER_ADDRESS;
+
+// Export network info
+export const getNetworkConfig = () => ({
+  network: CARDANO_NETWORK,
+  blockfrostUrl: BLOCKFROST_API_URL,
+  blockfrostProjectId: BLOCKFROST_PROJECT_ID,
+});
 
 // Helper function to chunk long strings (Cardano has 64-byte limit per string)
 export const chunkString = (content: string): string[] => {
@@ -104,10 +125,33 @@ export const isWalletAvailable = (walletName: string = 'lace'): boolean => {
   return !!(window.cardano && window.cardano[walletName]);
 };
 
-// Connect to wallet (CIP-30)
+// Get list of available wallets
+export const getAvailableWallets = (): string[] => {
+  if (typeof window === 'undefined' || !window.cardano) return [];
+  
+  const walletNames: string[] = [];
+  const supportedWallets = ['lace', 'nami', 'eternl', 'flint', 'yoroi', 'typhon', 'gerowallet'];
+  
+  for (const walletName of supportedWallets) {
+    if (window.cardano[walletName]) {
+      walletNames.push(walletName);
+    }
+  }
+  
+  return walletNames;
+};
+
+// Connect to wallet (CIP-30) - Opens authentication window
 export const connectWallet = async (walletName: string = 'lace'): Promise<any> => {
   if (!isWalletAvailable(walletName)) {
-    throw new Error(`${walletName.toUpperCase()} wallet not found. Please install LACE wallet extension from https://www.lace.io/`);
+    const availableWallets = getAvailableWallets();
+    if (availableWallets.length > 0) {
+      throw new Error(
+        `${walletName.toUpperCase()} wallet not found. Available wallets: ${availableWallets.join(', ')}. ` +
+        `Please install LACE wallet extension from https://www.lace.io/`
+      );
+    }
+    throw new Error(`No Cardano wallets found. Please install LACE wallet extension from https://www.lace.io/`);
   }
 
   try {
@@ -116,59 +160,209 @@ export const connectWallet = async (walletName: string = 'lace'): Promise<any> =
       throw new Error(`${walletName.toUpperCase()} wallet not accessible. Please refresh the page or reinstall the wallet extension.`);
     }
 
+    console.log(`🔗 Requesting connection to ${walletName.toUpperCase()} wallet...`);
+    
+    // This opens the wallet popup for user to approve dApp connection
     const walletApi = await window.cardano[walletName].enable();
+    
+    console.log(`✅ ${walletName.toUpperCase()} wallet connected successfully!`);
+    
+    // Verify network after connection
+    const networkId = await walletApi.getNetworkId();
+    const expectedNetworkId = NETWORK_IDS[CARDANO_NETWORK as keyof typeof NETWORK_IDS] ?? 0;
+    
+    console.log(`🌐 Connected to network ID: ${networkId} (expected: ${expectedNetworkId} for ${CARDANO_NETWORK})`);
+    
+    if (networkId !== expectedNetworkId) {
+      throw new Error(
+        `Wrong network! Please switch your wallet to the ${CARDANO_NETWORK.toUpperCase()} network. ` +
+        `Current network ID: ${networkId}, Expected: ${expectedNetworkId}`
+      );
+    }
+    
     return walletApi;
   } catch (error: any) {
     console.error("Failed to connect wallet:", error);
-    throw new Error(error.message || "User rejected wallet connection");
+    
+    // Handle user rejection specifically
+    if (error.code === -2 || error.message?.includes('reject') || error.message?.includes('denied')) {
+      throw new Error("Wallet connection was rejected. Please approve the connection in your wallet.");
+    }
+    
+    throw new Error(error.message || "Failed to connect wallet. Please try again.");
   }
 };
 
-// Get wallet address
+// Convert hex bytes to bech32 address (real implementation)
+const hexToBech32Address = (hexAddress: string): string => {
+  try {
+    // Remove '0x' prefix if present
+    const cleanHex = hexAddress.startsWith('0x') ? hexAddress.slice(2) : hexAddress;
+    
+    // Convert hex string to bytes
+    const bytes: number[] = [];
+    for (let i = 0; i < cleanHex.length; i += 2) {
+      bytes.push(parseInt(cleanHex.substring(i, i + 2), 16));
+    }
+    
+    // Determine prefix based on network byte (first byte)
+    // Network ID is encoded in the first nibble of the first byte
+    const networkByte = bytes[0] & 0x0f;
+    const prefix = networkByte === 1 ? 'addr' : 'addr_test';
+    
+    // Convert bytes to 5-bit words for bech32 encoding
+    const words = bech32.toWords(new Uint8Array(bytes));
+    
+    // Encode to bech32
+    const bech32Address = bech32.encode(prefix, words, 200); // 200 is max length for Cardano addresses
+    
+    return bech32Address;
+  } catch (error) {
+    console.error("Failed to convert hex to bech32:", error);
+    throw new Error("Invalid address format from wallet");
+  }
+};
+
+// Get wallet address (real implementation)
 export const getWalletAddress = async (walletApi: any): Promise<string> => {
   try {
-    // Try to get used addresses first
+    console.log("📍 Fetching wallet addresses...");
+    
+    // Try to get used addresses first (addresses that have received transactions)
     const usedAddressesHex = await walletApi.getUsedAddresses();
+    console.log(`Found ${usedAddressesHex?.length || 0} used addresses`);
 
     if (usedAddressesHex && usedAddressesHex.length > 0) {
-      // Convert from hex to bech32
-      const address = hexToBech32(usedAddressesHex[0]);
+      const address = hexToBech32Address(usedAddressesHex[0]);
+      console.log("✅ Using used address:", address);
       return address;
     }
 
-    // Fallback to unused addresses
+    // Fallback to unused addresses (fresh addresses)
     const unusedAddressesHex = await walletApi.getUnusedAddresses();
+    console.log(`Found ${unusedAddressesHex?.length || 0} unused addresses`);
+    
     if (unusedAddressesHex && unusedAddressesHex.length > 0) {
-      const address = hexToBech32(unusedAddressesHex[0]);
+      const address = hexToBech32Address(unusedAddressesHex[0]);
+      console.log("✅ Using unused address:", address);
       return address;
     }
 
-    throw new Error("No addresses found in wallet");
+    // Last resort: get change address
+    const changeAddressHex = await walletApi.getChangeAddress();
+    if (changeAddressHex) {
+      const address = hexToBech32Address(changeAddressHex);
+      console.log("✅ Using change address:", address);
+      return address;
+    }
+
+    throw new Error("No addresses found in wallet. Please ensure your wallet has been initialized.");
   } catch (error: any) {
     console.error("Failed to get wallet address:", error);
-
-    // Return a mock address for demo purposes
-    return "addr_test1qz..." + Math.random().toString(36).substring(7);
+    throw new Error(error.message || "Failed to retrieve wallet address");
   }
 };
 
-// Helper to convert hex address to bech32 (simplified for demo)
-const hexToBech32 = (hex: string): string => {
-  // In production, use @emurgo/cardano-serialization-lib-browser
-  // For demo, return a formatted preview address
-  return `addr_test1qp${hex.substring(0, 50)}...`;
+// Decode CBOR integer from hex string
+// CBOR encoding: https://www.rfc-editor.org/rfc/rfc8949.html
+const decodeCborInt = (hex: string, offset: number = 0): { value: bigint; bytesRead: number } => {
+  const firstByte = parseInt(hex.substring(offset, offset + 2), 16);
+  const majorType = firstByte >> 5;
+  const additionalInfo = firstByte & 0x1f;
+  
+  // Major type 0 = unsigned integer
+  if (majorType !== 0) {
+    throw new Error(`Expected unsigned integer (major type 0), got ${majorType}`);
+  }
+  
+  if (additionalInfo < 24) {
+    // Value is in the additional info itself
+    return { value: BigInt(additionalInfo), bytesRead: 2 };
+  } else if (additionalInfo === 24) {
+    // Next 1 byte is the value
+    const value = parseInt(hex.substring(offset + 2, offset + 4), 16);
+    return { value: BigInt(value), bytesRead: 4 };
+  } else if (additionalInfo === 25) {
+    // Next 2 bytes are the value
+    const value = parseInt(hex.substring(offset + 2, offset + 6), 16);
+    return { value: BigInt(value), bytesRead: 6 };
+  } else if (additionalInfo === 26) {
+    // Next 4 bytes are the value
+    const value = parseInt(hex.substring(offset + 2, offset + 10), 16);
+    return { value: BigInt(value), bytesRead: 10 };
+  } else if (additionalInfo === 27) {
+    // Next 8 bytes are the value
+    const highHex = hex.substring(offset + 2, offset + 10);
+    const lowHex = hex.substring(offset + 10, offset + 18);
+    const value = (BigInt('0x' + highHex) << 32n) | BigInt('0x' + lowHex);
+    return { value, bytesRead: 18 };
+  }
+  
+  throw new Error(`Unsupported CBOR additional info: ${additionalInfo}`);
 };
 
-// Get wallet balance
+// Get wallet balance (real implementation - returns ADA as string)
 export const getWalletBalance = async (walletApi: any): Promise<string> => {
   try {
-    const balanceHex = await walletApi.getBalance();
-    // In production, parse this properly
-    // For demo, return a formatted amount
-    return "5.000000"; // 5 ADA
+    const balanceCbor = await walletApi.getBalance();
+    console.log('📊 Raw balance CBOR:', balanceCbor);
+    
+    let lovelace: bigint;
+    
+    // Check the first byte to determine structure
+    const firstByte = parseInt(balanceCbor.substring(0, 2), 16);
+    const majorType = firstByte >> 5;
+    
+    if (majorType === 0) {
+      // Simple unsigned integer (just lovelace, no tokens)
+      const result = decodeCborInt(balanceCbor, 0);
+      lovelace = result.value;
+    } else if (majorType === 4 || majorType === 5) {
+      // Array or Map - balance with tokens
+      // Format: [lovelace, {policy_id: {asset_name: amount}}]
+      // Skip the array/map marker and read the first integer (lovelace)
+      // Array marker: 82 (2-element array), 83 (3-element), etc.
+      const result = decodeCborInt(balanceCbor, 2); // Skip first byte (array marker)
+      lovelace = result.value;
+    } else {
+      console.warn('Unknown CBOR format, attempting direct parse');
+      // Fallback: try to parse as simple hex
+      lovelace = BigInt('0x' + balanceCbor);
+    }
+    
+    // Convert lovelace to ADA (1 ADA = 1,000,000 lovelace)
+    const ada = Number(lovelace) / 1_000_000;
+    
+    console.log(`💰 Wallet balance: ${ada.toFixed(2)} ADA (${lovelace} lovelace)`);
+    
+    // Format with commas for display
+    return ada.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   } catch (error) {
     console.error("Failed to get wallet balance:", error);
-    return "0.000000";
+    return "0.00";
+  }
+};
+
+// Get network ID from wallet
+export const getWalletNetworkId = async (walletApi: any): Promise<number> => {
+  try {
+    const networkId = await walletApi.getNetworkId();
+    return networkId;
+  } catch (error) {
+    console.error("Failed to get network ID:", error);
+    return -1;
+  }
+};
+
+// Get network name from ID
+export const getNetworkName = (networkId: number): string => {
+  switch (networkId) {
+    case 1:
+      return 'Mainnet';
+    case 0:
+      return 'Preview (Testnet)';
+    default:
+      return 'Unknown';
   }
 };
 

@@ -19,7 +19,7 @@ import {
   changeNoteColor as dbChangeNoteColor,
   type Note
 } from '../utils/database';
-import { sendNoteTransaction } from '../utils/cardano';
+import { sendNoteTransaction, getWalletBalance, getWalletNetworkId, getNetworkName } from '../utils/cardano';
 
 type View = 'all' | 'archived' | 'trashed';
 
@@ -34,9 +34,34 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [submittingTx, setSubmittingTx] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<string>('0.000000');
+  const [networkName, setNetworkName] = useState<string>('Loading...');
 
   // Activate blockchain sync worker
   useBlockchainSync();
+
+  // Fetch wallet info on mount
+  useEffect(() => {
+    const fetchWalletInfo = async () => {
+      try {
+        // Get balance
+        const balance = await getWalletBalance(user.walletApi);
+        setWalletBalance(balance);
+        
+        // Get network
+        const networkId = await getWalletNetworkId(user.walletApi);
+        setNetworkName(getNetworkName(networkId));
+      } catch (error) {
+        console.error('Failed to fetch wallet info:', error);
+      }
+    };
+    
+    fetchWalletInfo();
+    
+    // Refresh balance periodically (every 30 seconds)
+    const interval = setInterval(fetchWalletInfo, 30000);
+    return () => clearInterval(interval);
+  }, [user.walletApi]);
 
   // Load notes from database
   const loadNotes = () => {
@@ -213,6 +238,8 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
             trashed: notes.filter(n => n.trashed).length,
           }}
           userAddress={user.address}
+          walletBalance={walletBalance}
+          networkName={networkName}
           onDisconnect={onDisconnect}
         />
 
