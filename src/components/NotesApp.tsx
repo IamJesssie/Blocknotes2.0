@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Wallet, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { NoteCard } from './NoteCard';
 import { NoteEditor } from './NoteEditor';
@@ -33,7 +33,6 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
   const [currentView, setCurrentView] = useState<View>('all');
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const [submittingTx, setSubmittingTx] = useState<string | null>(null);
 
   // Activate blockchain sync worker
@@ -213,6 +212,8 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
             archived: notes.filter(n => n.archived && !n.trashed).length,
             trashed: notes.filter(n => n.trashed).length,
           }}
+          userAddress={user.address}
+          onDisconnect={onDisconnect}
         />
 
         <main className="flex-1 overflow-y-auto p-8">
@@ -235,61 +236,17 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
                 </p>
               </div>
 
-              <div className="flex items-center gap-4">
-                {currentView === 'all' && (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setIsCreating(true)}
-                    className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all"
-                  >
-                    <Plus className="w-5 h-5" />
-                    New Block
-                  </motion.button>
-                )}
-
-                {/* Wallet Info */}
-                <div className="relative">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center gap-3 px-4 py-3 bg-slate-800 rounded-xl border border-slate-700 hover:border-slate-600"
-                  >
-                    <Wallet className="w-5 h-5 text-cyan-400" />
-                    <span className="text-sm font-mono">
-                      {user.address.substring(0, 8)}...{user.address.substring(user.address.length - 8)}
-                    </span>
-                  </motion.button>
-
-                  {showUserMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-80 bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-xl"
-                    >
-                      <div className="p-4 border-b border-slate-700">
-                        <div className="flex items-center gap-3 mb-2">
-                          <Wallet className="w-10 h-10 text-cyan-400" />
-                          <div className="flex-1">
-                            <p className="text-xs text-slate-400 mb-1">Connected Wallet</p>
-                            <p className="text-xs font-mono break-all">{user.address}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <motion.button
-                        whileHover={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
-                        onClick={onDisconnect}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        <Wallet className="w-4 h-4" />
-                        Disconnect Wallet
-                      </motion.button>
-                    </motion.div>
-                  )}
-                </div>
-              </div>
+              {currentView === 'all' && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setIsCreating(true)}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all"
+                >
+                  <Plus className="w-5 h-5" />
+                  New Block
+                </motion.button>
+              )}
             </motion.div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
