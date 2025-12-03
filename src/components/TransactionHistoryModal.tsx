@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ExternalLink, Copy, CheckCircle2, Clock, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import React,{ useState } from 'react';
 import { Transaction } from '../utils/database';
 import { toast } from 'sonner';
 
