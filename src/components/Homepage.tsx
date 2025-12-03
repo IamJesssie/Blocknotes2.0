@@ -1,3 +1,4 @@
+import React from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Wallet, Cloud, Zap, Shield, Blocks } from 'lucide-react';
 import { IsometricGrid } from './IsometricGrid';

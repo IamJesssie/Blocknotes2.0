@@ -1,7 +1,7 @@
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Edit, Archive, ArchiveRestore, Trash2, RotateCcw, Palette, Paperclip, History, ExternalLink } from 'lucide-react';
 import { type Note } from '../utils/database';
-import { useState } from 'react';
 import { ColorPicker } from './ColorPicker';
 
 interface NoteCardProps {

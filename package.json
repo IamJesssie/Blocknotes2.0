@@ -3,6 +3,9 @@
       "version": "0.1.0",
       "private": true,
       "dependencies": {
+            "@blaze-cardano/query": "^0.5.3",
+            "@blaze-cardano/sdk": "^0.2.44",
+            "@blaze-cardano/wallet": "^0.4.14",
             "@radix-ui/react-accordion": "^1.2.3",
             "@radix-ui/react-alert-dialog": "^1.1.6",
             "@radix-ui/react-aspect-ratio": "^1.1.2",
@@ -53,7 +56,8 @@
             "@types/react": "^19.2.7",
             "@types/react-dom": "^19.2.3",
             "@vitejs/plugin-react-swc": "^3.10.2",
-            "vite": "6.3.5"
+            "vite": "6.3.5",
+            "vite-plugin-node-polyfills": "^0.24.0"
       },
       "scripts": {
             "dev": "vite",

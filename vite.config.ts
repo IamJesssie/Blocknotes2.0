@@ -2,9 +2,28 @@
   import { defineConfig } from 'vite';
   import react from '@vitejs/plugin-react-swc';
   import path from 'path';
+  import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
   export default defineConfig({
-    plugins: [react()],
+    plugins: [
+      react(),
+      nodePolyfills({
+        // Enable polyfills for Node.js modules used by Blaze SDK
+        include: ['events', 'util', 'process', 'stream', 'buffer', 'crypto'],
+        globals: {
+          Buffer: true,
+          global: true,
+          process: true,
+        },
+      }),
+    ],
+    define: {
+      global: 'globalThis',
+      'process.env.NODE_ENV': '"development"',
+      'process.env': '{}',
+      'process.browser': 'true',
+      'process.version': '"v16.0.0"',
+    },
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
       alias: {
@@ -47,6 +66,14 @@
         '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
         '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
         '@': path.resolve(__dirname, './src'),
+      },
+    },
+    optimizeDeps: {
+      include: ['readable-stream', 'events', 'util'],
+      esbuildOptions: {
+        define: {
+          global: 'globalThis',
+        },
       },
     },
     build: {

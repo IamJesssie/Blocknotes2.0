@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { X, Save, Paperclip, Trash2 } from 'lucide-react';
-import { Note } from '../App';
+import { Note } from '../utils/database';
 import { ColorPicker } from './ColorPicker';
 
 interface NoteEditorProps {
   note: Note | null;
-  onSave: (note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onSave: (note: Omit<Note, 'id' | 'createdAt' | 'updatedAt' | 'address' | 'txHash' | 'status'>) => void;
   onClose: () => void;
 }
 
