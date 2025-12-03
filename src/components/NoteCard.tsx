@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Edit, Archive, ArchiveRestore, Trash2, RotateCcw, Palette, Paperclip, History } from 'lucide-react';
+import { Edit, Archive, ArchiveRestore, Trash2, RotateCcw, Palette, Paperclip, History, ExternalLink } from 'lucide-react';
 import { type Note } from '../utils/database';
 import { useState } from 'react';
 import { ColorPicker } from './ColorPicker';
@@ -35,6 +35,15 @@ export function NoteCard({
 }: NoteCardProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+
+  // Get the most recent confirmed transaction
+  const confirmedTransaction = note.transactions.find(tx => tx.status === 'confirmed');
+
+  const handleOpenCardanoscan = () => {
+    if (confirmedTransaction) {
+      window.open(`https://preview.cardanoscan.io/transaction/${confirmedTransaction.hash}`, '_blank');
+    }
+  };
 
   return (
     <motion.div
@@ -105,6 +114,14 @@ export function NoteCard({
                     onClick={onShowHistory}
                     color="from-cyan-500 to-blue-500"
                     label="History"
+                  />
+                )}
+                {confirmedTransaction && (
+                  <ActionButton
+                    icon={ExternalLink}
+                    onClick={handleOpenCardanoscan}
+                    color="from-green-500 to-emerald-500"
+                    label="View on Cardanoscan"
                   />
                 )}
                 <ActionButton
