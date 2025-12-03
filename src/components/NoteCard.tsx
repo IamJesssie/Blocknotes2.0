@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Edit, Archive, ArchiveRestore, Trash2, RotateCcw, Palette, Paperclip } from 'lucide-react';
+import { Edit, Archive, ArchiveRestore, Trash2, RotateCcw, Palette, Paperclip, History } from 'lucide-react';
 import { type Note } from '../utils/database';
 import { useState } from 'react';
 import { ColorPicker } from './ColorPicker';
@@ -15,6 +15,7 @@ interface NoteCardProps {
   onTrash: () => void;
   onRestore: () => void;
   onColorChange: (color: string) => void;
+  onShowHistory: () => void;
   currentView: 'all' | 'archived' | 'trashed';
 }
 
@@ -29,6 +30,7 @@ export function NoteCard({
   onTrash,
   onRestore,
   onColorChange,
+  onShowHistory,
   currentView
 }: NoteCardProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -97,6 +99,14 @@ export function NoteCard({
                   color="from-purple-500 to-pink-500"
                   label="Color"
                 />
+                {note.transactions.length > 0 && (
+                  <ActionButton
+                    icon={History}
+                    onClick={onShowHistory}
+                    color="from-cyan-500 to-blue-500"
+                    label="History"
+                  />
+                )}
                 <ActionButton
                   icon={Archive}
                   onClick={onArchive}
