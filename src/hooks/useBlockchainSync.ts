@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { getPendingNotes, updateNoteStatus } from '../utils/database';
+import { getPendingNotes, updateTransactionStatus } from '../utils/database';
 import { checkTransactionStatus } from '../utils/cardano';
 
 // Background worker that checks transaction status every 20 seconds
@@ -23,10 +23,10 @@ export const useBlockchainSync = () => {
             
             if (status === 'confirmed') {
               console.log(`✅ Transaction confirmed: ${note.txHash}`);
-              updateNoteStatus(note.id, 'confirmed');
+              updateTransactionStatus(note.id, note.txHash, 'confirmed');
             } else if (status === 'failed') {
               console.log(`❌ Transaction failed: ${note.txHash}`);
-              updateNoteStatus(note.id, 'failed');
+              updateTransactionStatus(note.id, note.txHash, 'failed');
             } else {
               console.log(`⏳ Transaction still pending: ${note.txHash}`);
             }

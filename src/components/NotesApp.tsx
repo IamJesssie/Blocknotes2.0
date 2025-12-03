@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, XCircle, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sidebar } from './Sidebar';
 import { NoteCard } from './NoteCard';
 import { NoteEditor } from './NoteEditor';
+import { TransactionHistoryModal } from './TransactionHistoryModal';
+import { TutorialOverlay } from './TutorialOverlay';
 import { BlocknotesBackground } from './BlocknotesBackground';
 import { useBlockchainSync } from '../hooks/useBlockchainSync';
 import {
@@ -35,8 +37,10 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [submittingTx, setSubmittingTx] = useState<string | null>(null);
+  const [selectedNoteForHistory, setSelectedNoteForHistory] = useState<Note | null>(null);
   const [walletBalance, setWalletBalance] = useState<string>('0.000000');
   const [networkName, setNetworkName] = useState<string>('Loading...');
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
   // Activate blockchain sync worker
   useBlockchainSync();
@@ -108,7 +112,7 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
       );
 
       // Update note with transaction hash
-      updateNoteTxHash(noteId, txId);
+      updateNoteTxHash(noteId, txId, action);
       loadNotes();
 
       console.log(`✅ Transaction submitted: ${txId}`);
@@ -420,6 +424,7 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
                       onTrash={() => trashNoteHandler(note.id)}
                       onRestore={() => restoreNoteHandler(note.id)}
                       onColorChange={(color) => changeColorHandler(note.id, color)}
+                      onShowHistory={() => setSelectedNoteForHistory(note)}
                       currentView={currentView}
                     />
                   </motion.div>
@@ -463,6 +468,14 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
             }}
           />
         )}
+
+        {selectedNoteForHistory && (
+          <TransactionHistoryModal
+            noteTitle={selectedNoteForHistory.title || 'Untitled Block'}
+            transactions={selectedNoteForHistory.transactions}
+            onClose={() => setSelectedNoteForHistory(null)}
+          />
+        )}
       </AnimatePresence>
 
       {/* Transaction Loading Overlay */}
@@ -486,6 +499,22 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
           </motion.div>
         </div>
       )}
+
+      {/* Help/Tutorial Button */}
+      <motion.button
+        onClick={() => setIsTutorialOpen(true)}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-24 right-8 w-14 h-14 bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center text-white shadow-lg transition-colors z-40"
+        title="View Tutorial"
+      >
+        <HelpCircle className="w-6 h-6" />
+      </motion.button>
+
+      <TutorialOverlay
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+      />
     </div>
   );
 }

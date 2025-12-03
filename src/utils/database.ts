@@ -1,9 +1,16 @@
 // Local database using localStorage with status tracking
 
+export interface Transaction {
+  hash: string;
+  status: 'pending' | 'confirmed' | 'failed';
+  action: 'create' | 'update' | 'delete' | 'restore';
+  timestamp: number;
+}
+
 export interface Note {
   id: string;
   address: string; // Wallet address
-  txHash: string | null; // Transaction hash
+  txHash: string | null; // Current/latest transaction hash
   status: 'pending' | 'confirmed' | 'failed'; // Blockchain status
   title: string;
   content: string;
@@ -11,6 +18,7 @@ export interface Note {
   attachments: string[];
   archived: boolean;
   trashed: boolean;
+  transactions: Transaction[]; // History of all transactions
   createdAt: number;
   updatedAt: number;
 }
@@ -56,6 +64,7 @@ export const createNote = (
     attachments,
     archived: false,
     trashed: false,
+    transactions: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -67,25 +76,49 @@ export const createNote = (
   return note;
 };
 
-// Update note with transaction hash
-export const updateNoteTxHash = (noteId: string, txHash: string): void => {
+// Update note with transaction hash and record in history
+export const updateNoteTxHash = (noteId: string, txHash: string, action: 'create' | 'update' | 'delete' | 'restore' = 'create'): void => {
   const notes = getAllNotes();
-  const updatedNotes = notes.map(note => 
-    note.id === noteId 
-      ? { ...note, txHash, status: 'pending' as const, updatedAt: Date.now() }
-      : note
-  );
+  const updatedNotes = notes.map(note => {
+    if (note.id === noteId) {
+      const newTransaction: Transaction = {
+        hash: txHash,
+        status: 'pending',
+        action,
+        timestamp: Date.now(),
+      };
+      return {
+        ...note,
+        txHash,
+        status: 'pending' as const,
+        transactions: [newTransaction, ...note.transactions],
+        updatedAt: Date.now(),
+      };
+    }
+    return note;
+  });
   saveAllNotes(updatedNotes);
 };
 
-// Update note status
-export const updateNoteStatus = (noteId: string, status: 'pending' | 'confirmed' | 'failed'): void => {
+// Update transaction status in history
+export const updateTransactionStatus = (
+  noteId: string,
+  txHash: string,
+  status: 'pending' | 'confirmed' | 'failed'
+): void => {
   const notes = getAllNotes();
-  const updatedNotes = notes.map(note => 
-    note.id === noteId 
-      ? { ...note, status, updatedAt: Date.now() }
-      : note
-  );
+  const updatedNotes = notes.map(note => {
+    if (note.id === noteId) {
+      return {
+        ...note,
+        status: status,
+        transactions: note.transactions.map(tx =>
+          tx.hash === txHash ? { ...tx, status } : tx
+        ),
+      };
+    }
+    return note;
+  });
   saveAllNotes(updatedNotes);
 };
 
