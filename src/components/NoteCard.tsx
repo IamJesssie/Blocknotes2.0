@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Edit, Archive, ArchiveRestore, Trash2, RotateCcw, Palette, Paperclip, History } from 'lucide-react';
+import { Edit, Archive, ArchiveRestore, Trash2, RotateCcw, Palette, Paperclip, History, ExternalLink } from 'lucide-react';
 import { type Note } from '../utils/database';
 import { useState } from 'react';
 import { ColorPicker } from './ColorPicker';
@@ -36,6 +36,15 @@ export function NoteCard({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
+  // Get the most recent confirmed transaction
+  const confirmedTransaction = note.transactions.find(tx => tx.status === 'confirmed');
+
+  const handleOpenCardanoscan = () => {
+    if (confirmedTransaction) {
+      window.open(`https://preview.cardanoscan.io/transaction/${confirmedTransaction.hash}`, '_blank');
+    }
+  };
+
   return (
     <motion.div
       layout
@@ -61,13 +70,14 @@ export function NoteCard({
         <div className={`h-2 bg-gradient-to-r ${note.color}`} />
 
         <div className="p-6">
-          {/* Title */}
-          <h3 className="text-xl mb-3 line-clamp-2 min-h-[3.5rem]">
+          <div className="p-4 md:p-6">
+            {/* Title */}
+            <h3 className="text-lg md:text-xl mb-3 line-clamp-2 min-h-[3.5rem]">
             {note.title || 'Untitled Block'}
           </h3>
 
           {/* Content preview */}
-          <p className="text-slate-400 text-sm mb-4 line-clamp-3 min-h-[4rem]">
+            <p className="text-slate-400 text-sm mb-4 line-clamp-3 min-h-[4rem] md:text-base">
             {note.content || 'No content'}
           </p>
 
@@ -83,7 +93,7 @@ export function NoteCard({
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: isHovered ? 1 : 0, y: isHovered ? 0 : 10 }}
-            className="flex items-center gap-2 flex-wrap"
+            className="flex items-center gap-2 flex-wrap md:gap-1"
           >
             {currentView === 'all' && (
               <>
@@ -105,6 +115,14 @@ export function NoteCard({
                     onClick={onShowHistory}
                     color="from-cyan-500 to-blue-500"
                     label="History"
+                  />
+                )}
+                {confirmedTransaction && (
+                  <ActionButton
+                    icon={ExternalLink}
+                    onClick={handleOpenCardanoscan}
+                    color="from-green-500 to-emerald-500"
+                    label="View on Cardanoscan"
                   />
                 )}
                 <ActionButton
@@ -175,6 +193,7 @@ export function NoteCard({
             </motion.div>
           )}
         </div>
+        </div>
 
         {/* Date info */}
         <div className="px-6 py-3 bg-slate-950/50 border-t border-slate-800">
@@ -203,7 +222,7 @@ function ActionButton({
       whileHover={{ scale: 1.1 }}
       whileTap={{ scale: 0.9 }}
       onClick={onClick}
-      className={`p-2 rounded-lg bg-gradient-to-r ${color} hover:shadow-lg transition-shadow`}
+      className={`p-1.5 md:p-2 rounded-lg bg-gradient-to-r ${color} hover:shadow-lg transition-shadow`}
       title={label}
     >
       <Icon className="w-4 h-4" />
