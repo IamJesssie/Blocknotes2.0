@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { Sidebar } from './Sidebar';
@@ -19,7 +19,13 @@ import {
   changeNoteColor as dbChangeNoteColor,
   type Note
 } from '../utils/database';
-import { sendNoteTransaction, getWalletBalance, getWalletNetworkId, getNetworkName } from '../utils/cardano';
+import {
+  sendNoteTransaction,
+  getWalletBalance,
+  getWalletNetworkId,
+  getNetworkName,
+  createBlockfrostProvider,
+} from '../utils/cardano';
 
 type View = 'all' | 'archived' | 'trashed';
 
@@ -36,6 +42,7 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
   const [submittingTx, setSubmittingTx] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<string>('0.000000');
   const [networkName, setNetworkName] = useState<string>('Loading...');
+  const [provider] = useState(() => createBlockfrostProvider());
 
   // Activate blockchain sync worker
   useBlockchainSync();
@@ -86,17 +93,33 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
     return false;
   });
 
-  const submitToBlockchain = async (noteId: string, action: 'create' | 'update' | 'delete') => {
+  const submitToBlockchain = async (noteId: string, action: 'create' | 'update' | 'delete', noteData?: { title: string; content: string }) => {
     setSubmittingTx(noteId);
 
     try {
-      const note = notes.find(n => n.id === noteId);
-      if (!note) return;
+      // Reload notes to ensure we have the latest state
+      loadNotes();
+      
+      // Try to find note from state, or use provided noteData
+      let note = notes.find(n => n.id === noteId);
+      
+      // If note not found and we have noteData (for create), use it
+      if (!note && noteData) {
+        // Get all notes fresh from database
+        const allNotes = getAllNotes();
+        note = allNotes.find(n => n.id === noteId);
+      }
+      
+      if (!note) {
+        console.error(`Note ${noteId} not found`);
+        throw new Error(`Note ${noteId} not found`);
+      }
 
       console.log(`📤 Submitting ${action} transaction for note:`, noteId);
 
-      // Submit transaction using wallet API
+      // Submit transaction using wallet API + Blaze/Blockfrost
       const txId = await sendNoteTransaction(
+        provider,
         user.walletApi,
         user.address, // Send to self
         '1000000', // 1 ADA minimum (1,000,000 lovelace)
@@ -110,7 +133,16 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
       updateNoteTxHash(noteId, txId);
       loadNotes();
 
+      const cardanoscanUrl = `https://preview.cardanoscan.io/transaction/${txId}`;
+      
+      // Log clickable Cardanoscan link to console
       console.log(`✅ Transaction submitted: ${txId}`);
+      console.log(`🔗 View on Cardanoscan:`, cardanoscanUrl);
+      // Most browsers make URLs in console clickable automatically
+      // Also store in window for easy access
+      (window as any).lastTxUrl = cardanoscanUrl;
+      console.log(`%c🔗 Click to open Cardanoscan: ${cardanoscanUrl}`, 'color: #3b82f6; font-weight: bold;');
+      console.log('💡 Or run: window.open(window.lastTxUrl)');
 
       // Show success message
       const isDemoTx = txId.startsWith('demo_');
@@ -126,7 +158,7 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
         alert(
           `🎉 Transaction submitted!\n\n` +
           `Tx Hash: ${txId}\n\n` +
-          `Check Cardanoscan: https://preview.cardanoscan.io/transaction/${txId}`
+          `Check Cardanoscan: ${cardanoscanUrl}`
         );
       }
 
@@ -138,21 +170,32 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
     }
   };
 
-  const createNoteHandler = async (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => {
-    // Create note in local database immediately (good UX)
-    const newNote = dbCreateNote(
-      user.address,
-      noteData.title,
-      noteData.content,
-      noteData.color,
-      noteData.attachments
-    );
+  const createNoteHandler = async (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt' | 'address' | 'txHash' | 'status'>) => {
+    try {
+      // Create note in local database immediately (good UX)
+      const newNote = dbCreateNote(
+        user.address,
+        noteData.title,
+        noteData.content,
+        noteData.color,
+        noteData.attachments
+      );
 
-    setIsCreating(false);
-    loadNotes();
+      setIsCreating(false);
+      loadNotes();
 
-    // Submit to blockchain in background
-    await submitToBlockchain(newNote.id, 'create');
+      console.log('✅ Note created locally:', newNote.id);
+      
+      // Submit to blockchain in background - this will prompt LACE wallet to sign
+      // Pass noteData to ensure we have the content even if state hasn't updated
+      await submitToBlockchain(newNote.id, 'create', {
+        title: noteData.title,
+        content: noteData.content
+      });
+    } catch (error) {
+      console.error('Failed to create note:', error);
+      alert(`Failed to create note: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const updateNoteHandler = async (noteId: string, updates: Partial<Note>) => {
@@ -169,12 +212,17 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
       return;
     }
 
-    // Submit delete transaction first
-    await submitToBlockchain(noteId, 'delete');
+    try {
+      // Submit delete transaction first - this will prompt LACE wallet to sign
+      await submitToBlockchain(noteId, 'delete');
 
-    // Then delete from local database
-    dbDeleteNote(noteId);
-    loadNotes();
+      // Only delete from local database after successful blockchain submission
+      dbDeleteNote(noteId);
+      loadNotes();
+    } catch (error) {
+      // If transaction fails, note remains in local database
+      console.error('Delete transaction failed, note not deleted:', error);
+    }
   };
 
   const archiveNoteHandler = (noteId: string) => {

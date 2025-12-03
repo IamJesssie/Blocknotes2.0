@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Homepage } from './components/Homepage';
 import { NotesApp } from './components/NotesApp';
 import { connectWallet, getWalletAddress } from './utils/cardano';

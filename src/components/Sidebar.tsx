@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileText, Archive, Trash2, Sparkles, Wallet, Globe, Coins, AlertTriangle } from 'lucide-react';
 

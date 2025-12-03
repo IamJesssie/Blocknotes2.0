@@ -3,6 +3,9 @@
 // Implements real CIP-30 wallet connection with proper address conversion
 
 import { bech32 } from 'bech32';
+import { Blaze, Core } from '@blaze-cardano/sdk';
+import { WebWallet } from '@blaze-cardano/wallet';
+import { Blockfrost } from '@blaze-cardano/query';
 
 // Environment configuration (from .env file)
 const BLOCKFROST_PROJECT_ID = import.meta.env.VITE_BLOCKFROST_PROJECT_ID || "previewV63zyo5P3KVq5Godjvhb1FB7pwSwfVOE";
@@ -31,6 +34,30 @@ export const getNetworkConfig = () => ({
   blockfrostProjectId: BLOCKFROST_PROJECT_ID,
 });
 
+// Initialize a Blockfrost provider for Blaze
+export const createBlockfrostProvider = () => {
+  if (!BLOCKFROST_PROJECT_ID) {
+    throw new Error('VITE_BLOCKFROST_PROJECT_ID is not configured.');
+  }
+
+  // Blaze Blockfrost expects the logical network name; we map our env
+  const network =
+    CARDANO_NETWORK === 'mainnet'
+      ? 'cardano-mainnet'
+      : CARDANO_NETWORK === 'preview'
+      ? 'cardano-preview'
+      : CARDANO_NETWORK === 'preprod'
+      ? 'cardano-preprod'
+      : 'cardano-preview';
+
+  console.log('🔧 Initializing Blockfrost provider with network:', network);
+
+  return new Blockfrost({
+    network,
+    projectId: BLOCKFROST_PROJECT_ID,
+  });
+};
+
 // Helper function to chunk long strings (Cardano has 64-byte limit per string)
 export const chunkString = (content: string): string[] => {
   if (content.length <= 64) {
@@ -40,8 +67,27 @@ export const chunkString = (content: string): string[] => {
   return chunks;
 };
 
-// Mock implementation - Replace with real Blaze SDK in production
+// Helper: format long strings into Metadatum (either Text or List)
+const formatContent = (content: string): Core.Metadatum => {
+  // CASE 1: SHORT STRING (FITS IN ONE CHUNK)
+  if (content.length <= 64) {
+    return Core.Metadatum.newText(content);
+  }
+
+  // CASE 2: LONG STRING (NEEDS SPLITTING)
+  const chunks = chunkString(content);
+  const list = new Core.MetadatumList();
+  
+  chunks.forEach(chunk => {
+    list.add(Core.Metadatum.newText(chunk));
+  });
+
+  return Core.Metadatum.newList(list);
+};
+
+// Real implementation using Blaze SDK
 export const sendNoteTransaction = async (
+  provider: Blockfrost,
   walletApi: any,
   targetAddress: string,
   lovelaceAmount: string,
@@ -59,64 +105,91 @@ export const sendNoteTransaction = async (
   console.log('Target Address:', targetAddress);
   console.log('Amount:', lovelaceAmount, 'lovelace');
 
-  // Build metadata structure (this is what will go on-chain)
-  const metadata = {
-    [METADATA_LABEL.toString()]: {
-      action: action,
-      note_id: noteId,
-      title: chunkString(noteTitle),
-      note: chunkString(noteContent),
-      created_at: new Date().toISOString()
+  // Basic env verification to help debug
+  console.log('🔧 Environment Variables Loaded:');
+  console.log('BLOCKFROST_PROJECT_ID:', BLOCKFROST_PROJECT_ID ? '✅ Loaded' : '❌ Missing');
+  console.log('RECEIVER_ADDRESS:', RECEIVER_ADDRESS ? '✅ Loaded' : '❌ Missing');
+  console.log('CARDANO_NETWORK:', CARDANO_NETWORK);
+
+  try {
+    if (!walletApi) {
+      throw new Error('Wallet API not available. Please connect your wallet first.');
     }
-  };
 
-  console.log('📦 Metadata:', JSON.stringify(metadata, null, 2));
+    console.log('👛 Initializing WebWallet...');
+    const wallet = new WebWallet(walletApi as any);
 
-  // PRODUCTION CODE (uncomment when you have proper build setup):
-  /*
-  import { Blaze, Core } from "@blaze-cardano/sdk";
-  import { Blockfrost } from "@blaze-cardano/query";
-  
-  const provider = new Blockfrost({
-    network: 'preview',
-    projectId: BLOCKFROST_PROJECT_ID
-  });
-  
-  const wallet = await WebWallet.connect(walletApi);
-  const blaze = await Blaze.from(provider, wallet);
-  
-  let tx = blaze
-    .newTransaction()
-    .payLovelace(Core.Address.fromBech32(targetAddress), BigInt(lovelaceAmount));
-  
-  const metadatumMap = new Core.MetadatumMap();
-  metadatumMap.insert(Core.Metadatum.newText("action"), Core.Metadatum.newText(action));
-  metadatumMap.insert(Core.Metadatum.newText("note_id"), Core.Metadatum.newText(noteId));
-  metadatumMap.insert(Core.Metadatum.newText("title"), formatContent(noteTitle));
-  metadatumMap.insert(Core.Metadatum.newText("note"), formatContent(noteContent));
-  metadatumMap.insert(Core.Metadatum.newText("created_at"), Core.Metadatum.newText(new Date().toISOString()));
-  
-  const metadatum = Core.Metadatum.newMap(metadatumMap);
-  const metadataMap = new Map();
-  metadataMap.set(METADATA_LABEL, metadatum);
-  const finalMetadata = new Core.Metadata(metadataMap);
-  
-  tx = tx.setMetadata(finalMetadata);
-  
-  const completedTx = await tx.complete();
-  const signedTx = await blaze.signTransaction(completedTx);
-  const txId = await blaze.provider.postTransactionToChain(signedTx);
-  
-  return txId;
-  */
+    console.log('⚡ Creating Blaze instance...');
+    const blaze = await Blaze.from(provider, wallet);
 
-  // DEMO MODE: Simulate transaction
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const mockTxId = `demo_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-      resolve(mockTxId);
-    }, 1500); // Simulate network delay
-  });
+    let tx = blaze
+      .newTransaction()
+      .payLovelace(Core.Address.fromBech32(targetAddress), BigInt(lovelaceAmount));
+
+    // --- METADATA CONSTRUCTION ---
+    // STEP 1: Initialize the top-level container (standard JavaScript Map)
+    const metadata = new Map<bigint, Core.Metadatum>();
+
+    // STEP 2: Create the inner data structure (MetadatumMap)
+    const metadatumMap = new Core.MetadatumMap();
+
+    // STEP 3: Insert key-value pairs into the inner map
+    metadatumMap.insert(
+      Core.Metadatum.newText('action'),
+      Core.Metadatum.newText(action)
+    );
+    metadatumMap.insert(
+      Core.Metadatum.newText('note_id'),
+      Core.Metadatum.newText(noteId)
+    );
+    metadatumMap.insert(
+      Core.Metadatum.newText('title'),
+      formatContent(noteTitle)
+    );
+    metadatumMap.insert(
+      Core.Metadatum.newText('note'),
+      formatContent(noteContent)
+    );
+    metadatumMap.insert(
+      Core.Metadatum.newText('created_at'),
+      Core.Metadatum.newText(new Date().toISOString())
+    );
+
+    // STEP 4: Wrap the inner MetadatumMap into a generic Metadatum object
+    const metadatum = Core.Metadatum.newMap(metadatumMap);
+
+    // STEP 5: Assign the data to your specific label in the top-level Map
+    metadata.set(METADATA_LABEL, metadatum);
+
+    // STEP 6: Convert the JavaScript Map to the final Metadata type required by Blaze
+    const finalMetadata = new Core.Metadata(metadata);
+
+    // STEP 7: Attach the metadata to the transaction
+    tx = tx.setMetadata(finalMetadata);
+
+    console.log('🏗️ Completing transaction...');
+    const completedTx = await tx.complete();
+
+    console.log('✍️ Requesting wallet signature...');
+    const signedTx = await blaze.signTransaction(completedTx);
+
+    console.log('📤 Submitting transaction to Blockfrost...');
+    const txId = await blaze.provider.postTransactionToChain(signedTx);
+
+    console.log('✅ Transaction submitted with ID:', txId);
+    return txId;
+  } catch (error: any) {
+    console.error('❌ Transaction failed:', error);
+
+    if (error?.message?.includes('Failed to fetch')) {
+      throw new Error(
+        '❌ Network error: Failed to fetch from Blockfrost. Your internet connection may be blocked or down.'
+      );
+    }
+
+    // Surface Blaze / wallet errors
+    throw new Error(error.message || 'Transaction failed. Please try again.');
+  }
 };
 
 // Check if wallet is available (CIP-30)

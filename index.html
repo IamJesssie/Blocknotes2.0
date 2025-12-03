@@ -9,6 +9,35 @@
 
     <body>
       <div id="root"></div>
+      <script>
+        // Polyfill for Node.js 'global' and 'process' in browser environment
+        if (typeof global === 'undefined') {
+          // eslint-disable-next-line no-var
+          var global = globalThis;
+        }
+        if (typeof window !== 'undefined') {
+          if (typeof window.process === 'undefined') {
+            window.process = {
+              env: {
+                NODE_ENV: 'development',
+              },
+              browser: true,
+              version: 'v16.0.0',
+              versions: {},
+              platform: 'browser',
+              nextTick: function(fn) { setTimeout(fn, 0); },
+            };
+          }
+          // Ensure process.env.NODE_ENV exists
+          if (!window.process.env.NODE_ENV) {
+            window.process.env.NODE_ENV = 'development';
+          }
+          // Also set on globalThis for modules that check there
+          if (typeof globalThis.process === 'undefined') {
+            globalThis.process = window.process;
+          }
+        }
+      </script>
       <script type="module" src="/src/main.tsx"></script>
     </body>
   </html>
