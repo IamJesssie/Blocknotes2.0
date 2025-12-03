@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useState } from 'react';
+import { Toaster } from 'sonner';
 import { Homepage } from './components/Homepage';
 import { NotesApp } from './components/NotesApp';
 import { connectWallet, getWalletAddress } from './utils/cardano';
@@ -46,13 +48,31 @@ export default function App() {
 
   // Show notes app if wallet is connected
   if (user) {
-    return <NotesApp user={user} onDisconnect={handleDisconnect} />;
+    return (
+      <>
+        <NotesApp user={user} onDisconnect={handleDisconnect} />
+        <Toaster 
+          position="top-right" 
+          richColors 
+          theme="dark"
+          closeButton
+          expand={true}
+        />
+      </>
+    );
   }
 
   // Show homepage with wallet connect button
   return (
     <div>
       <Homepage onWalletConnect={handleWalletConnect} />
+      <Toaster 
+        position="top-right" 
+        richColors 
+        theme="dark"
+        closeButton
+        expand={true}
+      />
       
       {/* Connection status overlay */}
       {isConnecting && (

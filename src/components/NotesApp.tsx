@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, XCircle, HelpCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import { Sidebar } from './Sidebar';
 import { NoteCard } from './NoteCard';
 import { NoteEditor } from './NoteEditor';
+import { TransactionHistoryModal } from './TransactionHistoryModal';
+import { TutorialOverlay } from './TutorialOverlay';
 import { BlocknotesBackground } from './BlocknotesBackground';
 import { useBlockchainSync } from '../hooks/useBlockchainSync';
 import {
@@ -40,9 +43,12 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [submittingTx, setSubmittingTx] = useState<string | null>(null);
+  const [selectedNoteForHistory, setSelectedNoteForHistory] = useState<Note | null>(null);
   const [walletBalance, setWalletBalance] = useState<string>('0.000000');
   const [networkName, setNetworkName] = useState<string>('Loading...');
+
   const [provider] = useState(() => createBlockfrostProvider());
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
   // Activate blockchain sync worker
   useBlockchainSync();
@@ -130,7 +136,7 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
       );
 
       // Update note with transaction hash
-      updateNoteTxHash(noteId, txId);
+      updateNoteTxHash(noteId, txId, action);
       loadNotes();
 
       const cardanoscanUrl = `https://preview.cardanoscan.io/transaction/${txId}`;
@@ -146,25 +152,33 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
 
       // Show success message
       const isDemoTx = txId.startsWith('demo_');
+      const actionLabel = action === 'delete' ? 'deleted' : action === 'update' ? 'updated' : 'created';
+      
       if (isDemoTx) {
-        alert(
-          `🎉 Note submitted to blockchain (DEMO MODE)!\n\n` +
-          `Tx Hash: ${txId}\n\n` +
-          `Status: Pending → will auto-confirm in 20 seconds\n\n` +
-          `Note: Install Blaze SDK locally for real transactions.\n` +
-          `See SETUP_INSTRUCTIONS.md for details.`
-        );
+        toast.success(`✨ Note ${actionLabel} (DEMO MODE)`, {
+          description: `Tx Hash: ${txId}\nStatus will auto-confirm in 20 seconds`,
+          duration: 6000,
+          icon: '🎉',
+        });
       } else {
-        alert(
-          `🎉 Transaction submitted!\n\n` +
-          `Tx Hash: ${txId}\n\n` +
-          `Check Cardanoscan: ${cardanoscanUrl}`
-        );
+        toast.success(`✨ Transaction submitted!`, {
+          description: `Tx Hash: ${txId}\nView on Cardanoscan`,
+          duration: 6000,
+          icon: '⛓️',
+          action: {
+            label: 'View',
+            onClick: () => window.open(`https://preview.cardanoscan.io/transaction/${txId}`, '_blank'),
+          },
+        });
       }
 
     } catch (error: any) {
       console.error('Transaction failed:', error);
-      alert(`❌ Transaction failed: ${error.message}`);
+      toast.error('Transaction failed', {
+        description: error.message,
+        duration: 6000,
+        icon: '❌',
+      });
     } finally {
       setSubmittingTx(null);
     }
@@ -200,6 +214,12 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
 
   const updateNoteHandler = async (noteId: string, updates: Partial<Note>) => {
     dbUpdateNote(noteId, updates);
+    
+    toast.success('✏️ Block updated!', {
+      description: 'Preparing to submit changes to blockchain...',
+      duration: 5000,
+    });
+
     setEditingNote(null);
     loadNotes();
 
@@ -228,21 +248,41 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
   const archiveNoteHandler = (noteId: string) => {
     dbArchiveNote(noteId);
     loadNotes();
+    toast.success('📦 Block archived!', {
+      description: 'You can find it in the Archived section.',
+      duration: 5000,
+      icon: '📦',
+    });
   };
 
   const unarchiveNoteHandler = (noteId: string) => {
     dbUnarchiveNote(noteId);
     loadNotes();
+    toast.success('📝 Block restored!', {
+      description: 'The block is back in your notes.',
+      duration: 5000,
+      icon: '✨',
+    });
   };
 
   const trashNoteHandler = (noteId: string) => {
     dbTrashNote(noteId);
     loadNotes();
+    toast.success('🗑️ Block moved to trash!', {
+      description: 'You can restore it from the Trash section.',
+      duration: 5000,
+      icon: '🗑️',
+    });
   };
 
   const restoreNoteHandler = (noteId: string) => {
     dbRestoreNote(noteId);
     loadNotes();
+    toast.success('♻️ Block restored!', {
+      description: 'The block has been restored to your notes.',
+      duration: 5000,
+      icon: '✨',
+    });
   };
 
   const changeColorHandler = (noteId: string, color: string) => {
@@ -269,6 +309,17 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
         return 'Confirmed';
       case 'failed':
         return 'Failed';
+    }
+  };
+
+  const getStatusBadgeColor = (status: Note['status']) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300';
+      case 'confirmed':
+        return 'bg-green-500/10 border-green-500/30 text-green-300';
+      case 'failed':
+        return 'bg-red-500/10 border-red-500/30 text-red-300';
     }
   };
 
@@ -324,19 +375,77 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
               )}
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
               <AnimatePresence mode="popLayout">
                 {filteredNotes.map((note) => (
                   <motion.div key={note.id} className="relative">
-                    {/* Status Badge */}
-                    <motion.div
-                      className="absolute -top-2 -right-2 z-10 bg-slate-800 border border-slate-700 rounded-full px-3 py-1 flex items-center gap-2 text-xs"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                    >
-                      {getStatusIcon(note.status)}
-                      <span>{getStatusText(note.status)}</span>
-                    </motion.div>
+                    {/* Status Badge with animations */}
+                    {note.status === 'pending' && (
+                      <motion.div
+                        className={`absolute -top-2 -right-2 z-10 border rounded-full px-3 py-1 flex items-center gap-2 text-xs font-medium backdrop-blur-sm ${getStatusBadgeColor(note.status)}`}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        whileHover={{ scale: 1.05 }}
+                      >
+                        {/* Pulsing glow effect for pending */}
+                        <motion.div
+                          className="absolute inset-0 rounded-full bg-yellow-400/20"
+                          animate={{
+                            boxShadow: [
+                              '0 0 10px rgba(250, 204, 21, 0.3)',
+                              '0 0 20px rgba(250, 204, 21, 0.6)',
+                              '0 0 10px rgba(250, 204, 21, 0.3)',
+                            ],
+                          }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                        />
+                        <div className="relative flex items-center gap-2">
+                          {getStatusIcon(note.status)}
+                          <span>{getStatusText(note.status)}</span>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {note.status === 'confirmed' && (
+                      <motion.div
+                        className={`absolute -top-2 -right-2 z-10 border rounded-full px-3 py-1 flex items-center gap-2 text-xs font-medium backdrop-blur-sm ${getStatusBadgeColor(note.status)}`}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        whileHover={{ scale: 1.05 }}
+                      >
+                        {/* Subtle glow for confirmed */}
+                        <motion.div
+                          className="absolute inset-0 rounded-full bg-green-400/10"
+                          animate={{
+                            opacity: [0.5, 1, 0.5],
+                          }}
+                          transition={{ duration: 3, repeat: Infinity }}
+                        />
+                        <div className="relative flex items-center gap-2">
+                          {getStatusIcon(note.status)}
+                          <span>{getStatusText(note.status)}</span>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {note.status === 'failed' && (
+                      <motion.div
+                        className={`absolute -top-2 -right-2 z-10 border rounded-full px-3 py-1 flex items-center gap-2 text-xs font-medium backdrop-blur-sm ${getStatusBadgeColor(note.status)}`}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        whileHover={{ scale: 1.05 }}
+                      >
+                        {/* Shake animation for failed */}
+                        <motion.div
+                          className="relative flex items-center gap-2"
+                          animate={{ x: [0, -2, 2, -2, 0] }}
+                          transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+                        >
+                          {getStatusIcon(note.status)}
+                          <span>{getStatusText(note.status)}</span>
+                        </motion.div>
+                      </motion.div>
+                    )}
 
                     <NoteCard
                       note={note}
@@ -349,6 +458,7 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
                       onTrash={() => trashNoteHandler(note.id)}
                       onRestore={() => restoreNoteHandler(note.id)}
                       onColorChange={(color) => changeColorHandler(note.id, color)}
+                      onShowHistory={() => setSelectedNoteForHistory(note)}
                       currentView={currentView}
                     />
                   </motion.div>
@@ -392,6 +502,14 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
             }}
           />
         )}
+
+        {selectedNoteForHistory && (
+          <TransactionHistoryModal
+            noteTitle={selectedNoteForHistory.title || 'Untitled Block'}
+            transactions={selectedNoteForHistory.transactions}
+            onClose={() => setSelectedNoteForHistory(null)}
+          />
+        )}
       </AnimatePresence>
 
       {/* Transaction Loading Overlay */}
@@ -415,6 +533,22 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
           </motion.div>
         </div>
       )}
+
+      {/* Help/Tutorial Button */}
+      <motion.button
+        onClick={() => setIsTutorialOpen(true)}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-24 right-8 w-14 h-14 bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center text-white shadow-lg transition-colors z-40"
+        title="View Tutorial"
+      >
+        <HelpCircle className="w-6 h-6" />
+      </motion.button>
+
+      <TutorialOverlay
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+      />
     </div>
   );
 }
