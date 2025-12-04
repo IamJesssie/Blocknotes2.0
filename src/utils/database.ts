@@ -18,6 +18,7 @@ export interface Note {
   attachments: string[];
   archived: boolean;
   trashed: boolean;
+  pendingDelete?: boolean; // Marked for deletion after tx confirms
   transactions: Transaction[]; // History of all transactions
   createdAt: number;
   updatedAt: number;
@@ -25,11 +26,23 @@ export interface Note {
 
 const STORAGE_KEY = 'blocknotes_db';
 
-// Get all notes from localStorage
+// Get all notes from localStorage (with migration for old notes)
 export const getAllNotes = (): Note[] => {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    
+    const notes = JSON.parse(data);
+    
+    // Migrate old notes that may be missing new fields
+    return notes.map((note: any) => ({
+      ...note,
+      transactions: note.transactions || [],
+      attachments: note.attachments || [],
+      status: note.status || 'confirmed',
+      txHash: note.txHash || null,
+      pendingDelete: note.pendingDelete || false,
+    }));
   } catch (error) {
     console.error("Failed to load notes:", error);
     return [];
@@ -107,6 +120,18 @@ export const updateTransactionStatus = (
   status: 'pending' | 'confirmed' | 'failed'
 ): void => {
   const notes = getAllNotes();
+  
+  // Find the note to check if it's pending delete
+  const targetNote = notes.find(n => n.id === noteId);
+  
+  // If delete transaction is confirmed, remove the note entirely
+  if (targetNote?.pendingDelete && status === 'confirmed') {
+    console.log(`🗑️ Delete transaction confirmed, removing note: ${noteId}`);
+    const filteredNotes = notes.filter(n => n.id !== noteId);
+    saveAllNotes(filteredNotes);
+    return;
+  }
+  
   const updatedNotes = notes.map(note => {
     if (note.id === noteId) {
       return {
@@ -144,11 +169,22 @@ export const updateNote = (noteId: string, updates: Partial<Note>): Note | null 
   return updatedNote;
 };
 
-// Delete note
+// Delete note immediately (use markNoteForDeletion for blockchain-tracked deletion)
 export const deleteNote = (noteId: string): void => {
   const notes = getAllNotes();
   const filteredNotes = notes.filter(n => n.id !== noteId);
   saveAllNotes(filteredNotes);
+};
+
+// Mark note for deletion (will be removed after tx confirms)
+export const markNoteForDeletion = (noteId: string): void => {
+  const notes = getAllNotes();
+  const updatedNotes = notes.map(note =>
+    note.id === noteId
+      ? { ...note, pendingDelete: true, updatedAt: Date.now() }
+      : note
+  );
+  saveAllNotes(updatedNotes);
 };
 
 // Archive note

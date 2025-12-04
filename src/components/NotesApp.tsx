@@ -28,6 +28,7 @@ import {
   getWalletNetworkId,
   getNetworkName,
   createBlockfrostProvider,
+  getReceiverAddress,
 } from '../utils/cardano';
 
 type View = 'all' | 'archived' | 'trashed';
@@ -123,11 +124,14 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
 
       console.log(`📤 Submitting ${action} transaction for note:`, noteId);
 
+      // Get the receiver address from environment config
+      const receiverAddress = getReceiverAddress();
+
       // Submit transaction using wallet API + Blaze/Blockfrost
       const txId = await sendNoteTransaction(
         provider,
         user.walletApi,
-        user.address, // Send to self
+        receiverAddress, // Send to configured receiver address
         '1000000', // 1 ADA minimum (1,000,000 lovelace)
         note.content,
         note.title,
@@ -139,16 +143,13 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
       updateNoteTxHash(noteId, txId, action);
       loadNotes();
 
+      // Store tx URL for later access (will be logged when confirmed)
       const cardanoscanUrl = `https://preview.cardanoscan.io/transaction/${txId}`;
-      
-      // Log clickable Cardanoscan link to console
-      console.log(`✅ Transaction submitted: ${txId}`);
-      console.log(`🔗 View on Cardanoscan:`, cardanoscanUrl);
-      // Most browsers make URLs in console clickable automatically
-      // Also store in window for easy access
       (window as any).lastTxUrl = cardanoscanUrl;
-      console.log(`%c🔗 Click to open Cardanoscan: ${cardanoscanUrl}`, 'color: #3b82f6; font-weight: bold;');
-      console.log('💡 Or run: window.open(window.lastTxUrl)');
+      
+      // Log submission (Cardanoscan link will appear after confirmation)
+      console.log(`✅ Transaction submitted: ${txId}`);
+      console.log(`⏳ Waiting for blockchain confirmation... (check every 20s)`);
 
       // Show success message
       const isDemoTx = txId.startsWith('demo_');
@@ -227,21 +228,49 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
     await submitToBlockchain(noteId, 'update');
   };
 
-  const deleteNoteHandler = async (noteId: string) => {
-    if (!confirm('Permanently delete this note? This will also submit a delete transaction to the blockchain.')) {
+  // Hard delete - removes from localStorage only (no blockchain tx)
+  // Used for cleaning up notes that are already in trash
+  const hardDeleteNoteHandler = (noteId: string) => {
+    if (!confirm('Permanently remove this note from your device? This cannot be undone.')) {
       return;
     }
+    
+    dbDeleteNote(noteId);
+    loadNotes();
+    toast.success('🗑️ Block permanently removed!', {
+      description: 'The note has been removed from your device.',
+      duration: 5000,
+      icon: '🗑️',
+    });
+  };
 
+  // Trash note - submits "delete" transaction to blockchain
+  // Note moves to trash and stays there with transaction history
+  const trashNoteHandler = async (noteId: string) => {
     try {
-      // Submit delete transaction first - this will prompt LACE wallet to sign
-      await submitToBlockchain(noteId, 'delete');
-
-      // Only delete from local database after successful blockchain submission
-      dbDeleteNote(noteId);
+      // First move to trash
+      dbTrashNote(noteId);
       loadNotes();
+      
+      toast.info('🗑️ Moving to trash...', {
+        description: 'Please sign the transaction in your wallet.',
+        duration: 5000,
+      });
+
+      // Submit delete transaction to blockchain
+      await submitToBlockchain(noteId, 'delete');
+      
+      toast.success('🗑️ Block moved to trash!', {
+        description: 'Delete transaction submitted. Check Trash for confirmation status.',
+        duration: 5000,
+        icon: '🗑️',
+      });
     } catch (error) {
-      // If transaction fails, note remains in local database
-      console.error('Delete transaction failed, note not deleted:', error);
+      console.error('Trash transaction failed:', error);
+      toast.error('Failed to submit delete transaction', {
+        description: 'The note is in trash but not recorded on blockchain.',
+        duration: 5000,
+      });
     }
   };
 
@@ -262,16 +291,6 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
       description: 'The block is back in your notes.',
       duration: 5000,
       icon: '✨',
-    });
-  };
-
-  const trashNoteHandler = (noteId: string) => {
-    dbTrashNote(noteId);
-    loadNotes();
-    toast.success('🗑️ Block moved to trash!', {
-      description: 'You can restore it from the Trash section.',
-      duration: 5000,
-      icon: '🗑️',
     });
   };
 
@@ -452,7 +471,7 @@ export function NotesApp({ user, onDisconnect }: NotesAppProps) {
                       isNew={false}
                       shake={false}
                       onEdit={() => setEditingNote(note)}
-                      onDelete={() => deleteNoteHandler(note.id)}
+                      onDelete={() => hardDeleteNoteHandler(note.id)}
                       onArchive={() => archiveNoteHandler(note.id)}
                       onUnarchive={() => unarchiveNoteHandler(note.id)}
                       onTrash={() => trashNoteHandler(note.id)}

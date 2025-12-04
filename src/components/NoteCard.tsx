@@ -36,8 +36,12 @@ export function NoteCard({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
+  // Ensure transactions array exists (for backward compatibility with old notes)
+  const transactions = note.transactions || [];
+  const attachments = note.attachments || [];
+
   // Get the most recent confirmed transaction
-  const confirmedTransaction = note.transactions.find(tx => tx.status === 'confirmed');
+  const confirmedTransaction = transactions.find(tx => tx.status === 'confirmed');
 
   const handleOpenCardanoscan = () => {
     if (confirmedTransaction) {
@@ -82,10 +86,10 @@ export function NoteCard({
           </p>
 
           {/* Attachments indicator */}
-          {note.attachments.length > 0 && (
+          {attachments.length > 0 && (
             <div className="flex items-center gap-2 mb-4 text-xs text-slate-500">
               <Paperclip className="w-3 h-3" />
-              <span>{note.attachments.length} attachment{note.attachments.length !== 1 ? 's' : ''}</span>
+              <span>{attachments.length} attachment{attachments.length !== 1 ? 's' : ''}</span>
             </div>
           )}
 
@@ -109,7 +113,7 @@ export function NoteCard({
                   color="from-purple-500 to-pink-500"
                   label="Color"
                 />
-                {note.transactions.length > 0 && (
+                {transactions.length > 0 && (
                   <ActionButton
                     icon={History}
                     onClick={onShowHistory}
@@ -159,17 +163,33 @@ export function NoteCard({
 
             {currentView === 'trashed' && (
               <>
+                {transactions.length > 0 && (
+                  <ActionButton
+                    icon={History}
+                    onClick={onShowHistory}
+                    color="from-cyan-500 to-blue-500"
+                    label="History"
+                  />
+                )}
+                {confirmedTransaction && (
+                  <ActionButton
+                    icon={ExternalLink}
+                    onClick={handleOpenCardanoscan}
+                    color="from-green-500 to-emerald-500"
+                    label="View on Cardanoscan"
+                  />
+                )}
                 <ActionButton
                   icon={RotateCcw}
                   onClick={onRestore}
-                  color="from-green-500 to-emerald-500"
+                  color="from-amber-500 to-yellow-500"
                   label="Restore"
                 />
                 <ActionButton
                   icon={Trash2}
                   onClick={onDelete}
                   color="from-red-500 to-pink-500"
-                  label="Delete Forever"
+                  label="Remove from Device"
                 />
               </>
             )}

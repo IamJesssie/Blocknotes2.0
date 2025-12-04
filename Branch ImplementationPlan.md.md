@@ -388,13 +388,104 @@ Resources
 *   **Cardanoscan Preview**: [https://preview.cardanoscan.io](https://preview.cardanoscan.io/)
     
 
+Bug Fixes & Integration Improvements (Master Branch)
+----------------------------------------------------
+
+**Date**: Applied after merging Branches 1-3  
+**Reason**: Runtime errors and flow issues discovered during integration testing
+
+### Fix 1: Backward Compatibility for Old Notes ✅
+
+**Problem**: Old notes in localStorage created before Branch 2-3 integration were missing `transactions`, `attachments`, `status`, and `txHash` fields, causing runtime crashes.
+
+**Solution**:
+- `src/components/NoteCard.tsx`: Added safety checks `note.transactions || []` and `note.attachments || []`
+- `src/utils/database.ts`: Added migration in `getAllNotes()` to automatically add missing fields to old notes
+
+**Files Modified**:
+- `src/components/NoteCard.tsx`
+- `src/utils/database.ts`
+
+---
+
+### Fix 2: Trash Flow - Blockchain Transaction for Delete ✅
+
+**Problem**: Trash button was only moving notes to local trash without submitting a blockchain transaction. This was inconsistent with the requirement that ALL actions (create/update/delete) must be recorded on-chain.
+
+**Solution**:
+- Added `pendingDelete` field to Note interface in `database.ts`
+- Added `markNoteForDeletion()` function to set `pendingDelete: true` and `status: 'pending'`
+- Created new `trashNoteHandler()` in `NotesApp.tsx` that:
+  1. Marks note for deletion locally
+  2. Submits "delete" transaction to blockchain
+  3. Stores txHash on the note
+  4. Note stays in Trash with pending status until confirmed
+- Created `hardDeleteNoteHandler()` for removing from localStorage only (used in Trash tab "Remove from Device")
+
+**Files Modified**:
+- `src/utils/database.ts` - Added `pendingDelete` field and `markNoteForDeletion()`
+- `src/components/NotesApp.tsx` - Added `trashNoteHandler`, `hardDeleteNoteHandler`
+- `src/components/NoteCard.tsx` - Updated Trash tab buttons (History, Cardanoscan, Restore, Remove from Device)
+
+---
+
+### Fix 3: Cardanoscan Link Timing (False Positive Prevention) ✅
+
+**Problem**: Console was logging "View on Cardanoscan" link immediately after submitting transaction, before it was actually confirmed. This was a false positive that could confuse users.
+
+**Solution**:
+- Added `MIN_TX_AGE_MS = 10000` (10 seconds) constant in `useBlockchainSync.ts`
+- Background worker now skips checking transactions younger than 10 seconds
+- Cardanoscan link is now ONLY logged when transaction status changes to 'confirmed'
+- Added timestamp tracking with `syncStartedAt` to calculate transaction age
+
+**Expected Console Log Sequence**:
+```
+1. User clicks Save → "Creating blockchain transaction..."
+2. Sign prompt appears → "Transaction submitted! Hash: abc123..."
+3. Immediate save → "Note saved to local storage"
+4. Wait ~10 seconds for MIN_TX_AGE
+5. Background sync → "Checking pending transactions..."
+6. Status confirmed → "✅ Transaction confirmed! Note: [title]"
+7. ONLY NOW → "🔗 View on Cardanoscan: https://preview.cardanoscan.io/transaction/abc123"
+```
+
+**Files Modified**:
+- `src/hooks/useBlockchainSync.ts`
+
+---
+
+### Fix 4: Receiver Address Configuration ✅
+
+**Problem**: All transactions were using `user.address` (self-transaction) instead of the configured receiver address. This meant ADA was being sent to the same wallet instead of a designated unused address.
+
+**Solution**:
+- Added `VITE_RECEIVER_ADDRESS` to `.env` with an unused Preview network address
+- Updated `NotesApp.tsx` to use `getReceiverAddress()` from `cardano.ts`
+- All `sendNoteTransaction()` calls now use the configured receiver address
+
+**Files Modified**:
+- `src/components/NotesApp.tsx` - Changed from `user.address` to `getReceiverAddress()`
+- `.env` - Added `VITE_RECEIVER_ADDRESS` configuration
+
+---
+
+### Documentation Added ✅
+
+- `TEAM_WORKFLOW.md` - Instructions for team to sync with master branch
+- `TECHNICAL REPORTB1.md` - Technical documentation for Branch 1 implementation
+
+---
+
 Notes
 -----
 
-*   All branches should pull from main (or current working branch) regularly
+*   All branches should pull from main (or current working branch) regularly
     
-*   Use SETUP\_INSTRUCTIONS.md as reference for implementation details
+*   Use SETUP\_INSTRUCTIONS.md as reference for implementation details
     
-*   The Finaltask.md file contains the professor's requirements - refer to it frequently
+*   The Finaltask.md file contains the professor's requirements - refer to it frequently
     
-*   Current code is in DEMO mode - your job is to make it REAL
+*   ✅ Core features are now REAL (not DEMO mode) after Branch 2-3 integration
+    
+*   ✅ Bug fixes applied - all team members should pull master to get latest fixes
