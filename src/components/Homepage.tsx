@@ -14,11 +14,11 @@ export function Homepage({ onWalletConnect }: HomepageProps) {
       title: 'Block-Based Notes',
       description: 'Organize your thoughts in beautiful, animated blocks'
     },
-    {
-      icon: Cloud,
-      title: 'IPFS Storage',
-      description: 'Decentralized storage powered by Blockfrost IPFS'
-    },
+      {
+        icon: Cloud,
+        title: 'Metadata Extraction',
+        description: 'Extracts metadata of the submitted transactions'
+      },
     {
       icon: Shield,
       title: 'Web3 Wallet',
