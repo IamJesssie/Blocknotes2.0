@@ -12,12 +12,12 @@ export function Homepage({ onWalletConnect }: HomepageProps) {
     {
       icon: Blocks,
       title: 'Block-Based Notes',
-      description: 'Organize your thoughts in beautiful, animated blocks'
+      description: 'Organize your thoughts in block notes'
     },
       {
         icon: Cloud,
         title: 'Metadata Extraction',
-        description: 'Extracts metadata of the submitted transactions'
+        description: 'Extracts transactions metadata '
       },
     {
       icon: Shield,
